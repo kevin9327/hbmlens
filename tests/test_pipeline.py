@@ -132,8 +132,25 @@ def test_cuda_matches_virtual():
 
     m = get_mapper("interleaved", "tiny")
     faults = demo_faults(m, 9)
-    for name in ("march-c-minus", "walking-ones", "random", "moving-inversions"):
-        v = _run("tiny", m, faults, name)
-        c = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay()).run(get_pattern(name))
-        assert c.meta.total_fails == v.meta.total_fails, name
-        assert np.array_equal(c.failing_indices(), v.failing_indices()), name
+    for access in ("vector", "ordered"):
+        for name in ("march-c-minus", "walking-ones", "random", "moving-inversions", "checkerboard"):
+            v = _run("tiny", m, faults, name)
+            c = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay(),
+                            access=access).run(get_pattern(name))
+            assert c.meta.total_fails == v.meta.total_fails, (access, name)
+            assert np.array_equal(c.failing_indices(), v.failing_indices()), (access, name)
+
+
+@pytest.mark.cuda
+@pytest.mark.skipif(not cuda_available(), reason="no CUDA device")
+@pytest.mark.parametrize("region", [(0, 32768 - 3), (4, 32768 - 1), (3, 32000)])
+def test_cuda_regions_with_tail_or_misalignment(region):
+    from hbmlens.backends.cuda import CudaBackend
+
+    m = get_mapper("linear", "tiny")
+    faults = demo_faults(m, 12)
+    pat = get_pattern("march-c-minus")
+    v = VirtualBackend("tiny", faults).run(pat, region=region)
+    c = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay()).run(pat, region=region)
+    assert np.array_equal(c.failing_indices(), v.failing_indices())
+    assert c.meta.notes["access"] == ("vector" if region[0] % 4 == 0 else "ordered")
