@@ -8,6 +8,25 @@ and analyzes where and why cells fail.
 
 Status: early development (v0.1-dev). See [docs/roadmap.md](docs/roadmap.md).
 
+## Why hbmlens
+
+Measured, not claimed ([details](docs/vs-free-tools.md)):
+
+- **Better tests**: the hbmlens suite detects 100% of nine classic fault models with
+  64 memory operations per word; a cuda_memtest-style suite needs 289 and still misses
+  a class of coupling faults ([coverage table](docs/coverage.md)).
+- **Every failure kept**: exact counts and full records, not the last 10.
+- **Fast**: 609-828 GB/s test throughput on a laptop RTX 5080.
+- **Failures are read**: DQ lane / row / column / bank / cell signatures, fail
+  bitmaps and a 3D view of the device.
+
+```bash
+pip install -e ".[cuda]"
+hbmlens demo                      # inject faults, test, analyze, write a 3D viewer
+hbmlens run --backend cuda        # test real GPU memory
+hbmlens coverage                  # which pattern catches which fault
+```
+
 ```python
 from hbmlens.mapping import get_mapper
 from hbmlens.faults import demo_faults

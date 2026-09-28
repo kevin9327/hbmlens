@@ -130,5 +130,48 @@ def analyze(log_path: str, geometry: str, mapper_name: str, out: str) -> None:
     _print_summary(log, sigs, rec, Path(out))
 
 
+@main.command()
+@click.option("--trials", default=500, show_default=True, help="random fault placements per model")
+@click.option("--seed", default=0, show_default=True)
+@click.option("--out", default="docs/coverage.md", show_default=True, type=click.Path(dir_okay=False))
+def coverage(trials: int, seed: int, out: str) -> None:
+    """Measure which pattern detects which classic fault model; compare test suites."""
+    from .coverage import FAULT_MODELS, markdown_table, measure
+    from .patterns.library import CUDA_MEMTEST_STYLE
+
+    pats = {name: PATTERNS[name]() for name in PATTERNS}
+    res = measure(pats, trials=trials, seed=seed)
+    suites = {
+        "cuda_memtest-style (8 tests)": CUDA_MEMTEST_STYLE,
+        "hbmlens full: march-c-minus-wom + retention": ["march-c-minus-wom", "retention"],
+        "hbmlens quick: march-c-minus + retention": ["march-c-minus", "retention"],
+    }
+    text = (
+        "# Fault coverage of memory test patterns\n\n"
+        f"Measured with `hbmlens coverage --trials {trials} --seed {seed}`: every fault model is placed "
+        f"at {trials} random locations in a 1024-word memory and simulated bit-exactly. A fault counts as "
+        "detected only if every run order allowed by the pattern catches it. `ops/word` is the number of "
+        "memory reads and writes per word (the cost of the test).\n\n"
+        "Fault models: " + ", ".join(FAULT_MODELS) + " (see `hbmlens/coverage.py`). The cuda_memtest-style "
+        "patterns are re-implemented from that project's public test list; they are not its original code.\n\n"
+        + markdown_table(res, suites)
+        + "\n## Reading the table\n\n"
+        "- The hbmlens full suite detects every fault in every model with 64 operations per word; the "
+        "cuda_memtest-style suite needs 289 and still misses some idempotent coupling faults (CFid).\n"
+        "- The missed class: an aggressor cell at a lower address rises 0->1 and forces the same bit of a "
+        "higher word to 0 (or falls 1->0 and forces it to 1). With the same data in every word, moving "
+        "inversions never read the victim after it was flipped against its current value; March C-'s "
+        "down(r0,w1) element does. Reproduce: `tests/test_coverage.py::"
+        "test_moving_inversions_suite_misses_this_idempotent_coupling`.\n"
+        "- Plain March C- catches all bit-level faults but only half of the intra-word idempotent coupling "
+        "faults; running it over the six word-oriented data backgrounds closes that gap.\n"
+        "- Retention faults need a pause; the retention and bit-fade patterns are the only ones with one.\n"
+    )
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    Path(out).write_text(text, encoding="utf-8")
+    click.echo(markdown_table(res, suites))
+    click.echo(f"written {out}")
+
+
 if __name__ == "__main__":
     main()

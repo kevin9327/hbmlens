@@ -100,6 +100,66 @@ def retention(pause_s: float = 64.0) -> Pattern:
     )
 
 
+WOM_BACKGROUNDS = (0x00000000, 0x55555555, 0x33333333, 0x0F0F0F0F, 0x00FF00FF, 0x0000FFFF)
+
+
+def march_c_minus_wom() -> Pattern:
+    """Word-oriented March C-: March C- over the log2(32)+1 standard data backgrounds, so
+    every pair of bits inside a 32-bit word sees both equal and opposite values
+    (needed for intra-word coupling faults). 60N."""
+    steps: list = []
+    for v in WOM_BACKGROUNDS:
+        steps += list(march_c_minus(Background("solid", v)).steps)
+    return Pattern("march-c-minus-wom", tuple(steps),
+                   description="March C- over 6 word-oriented data backgrounds (60N)")
+
+
+# ---- re-implementations of the cuda_memtest test list (from its public README) ----
+# These follow the published test descriptions; they are not the original code.
+
+def _moving_inversions(bg: Background) -> tuple:
+    return (Element("up", (_w(bg),)), Element("up", (_r(bg), _w(bg, True))),
+            Element("down", (_r(bg, True), _w(bg))))
+
+
+def own_address() -> Pattern:
+    b = Background("addr")
+    return Pattern("own-address", (Element("any", (_w(b),)), Element("any", (_r(b),))),
+                   description="cuda_memtest-style test 1: each word holds its own address")
+
+
+def mi_ones_zeros() -> Pattern:
+    return Pattern("mi-ones-zeros", _moving_inversions(ZERO) + _moving_inversions(ONES),
+                   description="cuda_memtest-style test 2: moving inversions, ones and zeros")
+
+
+def mi_8bit() -> Pattern:
+    steps: tuple = ()
+    for k in range(8):
+        steps += _moving_inversions(Background("solid", 0x01010101 << k))
+    return Pattern("mi-8bit", steps, description="cuda_memtest-style test 3: moving inversions, 8-bit walking pattern")
+
+
+def mi_random(seed: int = 3) -> Pattern:
+    return Pattern("mi-random", _moving_inversions(Background("random", seed=seed)),
+                   description="cuda_memtest-style test 4: moving inversions, random pattern")
+
+
+def mi_32bit() -> Pattern:
+    steps: tuple = ()
+    for k in range(32):
+        steps += _moving_inversions(Background("solid", 1 << k))
+    return Pattern("mi-32bit", steps, description="cuda_memtest-style test 6: moving inversions, 32-bit walking pattern")
+
+
+def bit_fade(pause_s: float = 5400.0) -> Pattern:
+    p = retention(pause_s)
+    return Pattern("bit-fade", p.steps, description="cuda_memtest-style test 9: bit fade (90 min pauses)")
+
+
+CUDA_MEMTEST_STYLE = ["walking-ones", "own-address", "mi-ones-zeros", "mi-8bit", "mi-random", "mi-32bit",
+                      "random", "bit-fade"]
+
 PATTERNS = {
     "mats-plus": mats_plus,
     "march-c-minus": march_c_minus,
@@ -108,6 +168,13 @@ PATTERNS = {
     "moving-inversions": moving_inversions,
     "random": random_data,
     "retention": retention,
+    "march-c-minus-wom": march_c_minus_wom,
+    "own-address": own_address,
+    "mi-ones-zeros": mi_ones_zeros,
+    "mi-8bit": mi_8bit,
+    "mi-random": mi_random,
+    "mi-32bit": mi_32bit,
+    "bit-fade": bit_fade,
 }
 
 
