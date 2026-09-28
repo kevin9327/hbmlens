@@ -269,7 +269,7 @@ def save_panels(panels: list[tuple[str, np.ndarray]], path, cols: int = 4):
     fig, axes = plt.subplots(rows, cols, figsize=(3.2 * cols, 3.0 * rows), squeeze=False)
     for ax in axes.ravel():
         ax.axis("off")
-    for ax, (title, bm) in zip(axes.ravel(), panels):
+    for ax, (title, bm) in zip(axes.ravel(), panels, strict=False):
         ax.axis("on")
         ax.imshow(bm, cmap="magma", vmin=0, vmax=1, interpolation="nearest", aspect="auto")
         if 0 < bm.sum() <= 16:
@@ -298,7 +298,7 @@ def save_bitmaps(bitmaps: dict[int, np.ndarray], cells: pd.DataFrame, path, cols
     names = cells.drop_duplicates("bank_key").set_index("bank_key") if len(cells) else None
     for ax in axes.ravel():
         ax.axis("off")
-    for ax, (bk, bm) in zip(axes.ravel(), bitmaps.items()):
+    for ax, (bk, bm) in zip(axes.ravel(), bitmaps.items(), strict=False):
         ax.imshow(bm, cmap="magma", vmin=0, vmax=1, interpolation="nearest", aspect="auto")
         n_fail = int(bm.sum())
         if 0 < n_fail <= 16:  # isolated cells are single pixels: circle them
@@ -349,7 +349,8 @@ def report_markdown(log: FailLog, mapper: LinearMapper, signatures: list[Signatu
     cell_sigs = [s for s in signatures if s.kind == "cell"]
     for s in [s for s in signatures if s.kind != "cell"] + cell_sigs[:max_cells]:
         loc = ", ".join(f"{k}={v}" for k, v in s.location.items())
-        lines.append(f"| {s.kind} | {loc} | {','.join(map(str, s.bits[:8]))} | {s.words} | {s.cells} | {s.first_element} |")
+        bits = ",".join(map(str, s.bits[:8]))
+        lines.append(f"| {s.kind} | {loc} | {bits} | {s.words} | {s.cells} | {s.first_element} |")
     if len(cell_sigs) > max_cells:
         lines.append(f"| cell | ... {len(cell_sigs) - max_cells} more isolated cells | | | | |")
     if recovery is not None:

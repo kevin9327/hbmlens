@@ -232,7 +232,7 @@ def initial_states(spec: FaultSpec) -> list[dict[int, int]]:
     states = []
     for combo in itertools.product((0, 1), repeat=len(cells)):
         init: dict[int, int] = {}
-        for (w, b), on in zip(cells, combo):
+        for (w, b), on in zip(cells, combo, strict=True):
             if on:
                 init[w] = init.get(w, 0) | (FULL if b is None else 1 << b)
         states.append(init)

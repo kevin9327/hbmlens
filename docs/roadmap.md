@@ -12,6 +12,14 @@ papers, open-source simulators and datasets).
 
 Working:
 
+- Fault science (core, docs/design.md): fault primitives <S/F/R> with the published
+  catalogues (12 + 36 static, 12 + 32 dynamic) and the DRAM-specific attributes partial,
+  dirty, soft and transient; a march notation parser with 14 published tests; an exact
+  simulator that proves detection over every placement, initial value and address order
+  (`hbmlens fp-coverage`, docs/fault-primitives.md). Reproduces VTS 2002 Table 4 (64/64),
+  DATE 2006 Table 6 (12/12) and the completeness of March SS, RAW1 and RAW; found that
+  hammered writes let plain write-destructive faults escape March H1C/T1C and H2C with an
+  odd hammer count, with March H1C+/T1C+ proven complete
 - HBM organization presets (tiny, small, medium 4 GiB for GPU runs, illustrative HBM3
   16 GiB / HBM4 32 GiB) following the Channel > PseudoChannel > Sid > BankGroup > Bank >
   Row > Column hierarchy
@@ -41,7 +49,8 @@ Working:
 - CLI: `hbmlens demo`, `hbmlens run --backend virtual|cuda [--inject] [--max-records]`,
   `hbmlens analyze`, `hbmlens coverage`
 - Benchmarks: `benchmarks/gpu_bandwidth.py`, `benchmarks/suite_time.py`
-- 77 tests, including CUDA/virtual record parity and textbook coverage results
+- 213 tests (lint-clean, CI on every push), including CUDA/virtual record parity and
+  reproductions of published tables
 
 ## P0: 3D visualization of the virtual device (required)
 
@@ -58,6 +67,12 @@ steps and a die spacing slider. Still to build:
 
 ## P1
 
+- GPU test suites in fault primitive terms: every data bit of a word-oriented pattern as its
+  own bit-oriented memory (checker / address / random backgrounds at realistic addresses), to
+  restate the comparison with free tools on the fault primitive engine
+- Fault primitive engine: address decoder faults, linked faults, 3-operation dynamic faults,
+  neighbourhood pattern-sensitive faults; a delay test proven for all soft faults
+- Bit-line (`b`) operations on the virtual device and GPUs once a physical map is known
 - Overflow-proof capture: per-row and per-column fail masks built on the GPU (mapper
   decoded in the kernel), so analysis stays exact when millions of words fail (a dead
   DQ lane on 4 GiB fails 32 Mi words; today the analyzer sees only the recorded part)

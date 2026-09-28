@@ -63,7 +63,8 @@ class FaultSet:
             return ReadOverlay.empty()
         idx = np.concatenate([f.indices for f in self.faults]).astype(np.uint64)
         and_m = np.concatenate(
-            [np.full(len(f.indices), FULL & ~(1 << f.bit) if f.stuck_value == 0 else FULL, np.uint32) for f in self.faults]
+            [np.full(len(f.indices), FULL & ~(1 << f.bit) if f.stuck_value == 0 else FULL, np.uint32)
+             for f in self.faults]
         )
         or_m = np.concatenate(
             [np.full(len(f.indices), (1 << f.bit) if f.stuck_value else 0, np.uint32) for f in self.faults]
@@ -96,11 +97,11 @@ class FaultFactory:
         return {lvl: int(self.rng.integers(self.sizes[lvl])) for lvl in LEVELS}
 
     def _indices(self, fixed: dict, free: tuple[str, ...]) -> np.ndarray:
-        grids = np.meshgrid(*[np.arange(self.sizes[l]) for l in free], indexing="ij") if free else []
+        grids = np.meshgrid(*[np.arange(self.sizes[lvl]) for lvl in free], indexing="ij") if free else []
         n = grids[0].size if free else 1
-        fields = {l: np.full(n, fixed[l]) for l in LEVELS if l not in free}
-        for l, gr in zip(free, grids):
-            fields[l] = gr.ravel()
+        fields = {lvl: np.full(n, fixed[lvl]) for lvl in LEVELS if lvl not in free}
+        for lvl, gr in zip(free, grids, strict=True):
+            fields[lvl] = gr.ravel()
         return np.sort(self.mapper.encode(fields).astype(np.uint64))
 
     def _bit_value(self) -> tuple[int, int]:
@@ -114,13 +115,13 @@ class FaultFactory:
     def row(self) -> Fault:
         f = self._rand_fields()
         bit, val = self._bit_value()
-        loc = {l: f[l] for l in LEVELS[:-3]} | {"row": f["row"]}
+        loc = {lvl: f[lvl] for lvl in LEVELS[:-3]} | {"row": f["row"]}
         return Fault("row", self._indices(f, ("column", "word")), bit, val, loc)
 
     def column(self) -> Fault:
         f = self._rand_fields()
         bit, val = self._bit_value()
-        loc = {l: f[l] for l in LEVELS[:-3]} | {"column": f["column"]}
+        loc = {lvl: f[lvl] for lvl in LEVELS[:-3]} | {"column": f["column"]}
         return Fault("column", self._indices(f, ("row", "word")), bit, val, loc)
 
     def dq_lane(self) -> Fault:

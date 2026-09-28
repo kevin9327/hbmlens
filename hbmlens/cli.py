@@ -210,5 +210,22 @@ def coverage(trials: int, seed: int, out: str) -> None:
     click.echo(f"written {out}")
 
 
+@main.command("fp-coverage")
+@click.option("--out", default="docs/fault-primitives.md", show_default=True, type=click.Path(dir_okay=False))
+@click.option("--workers", default=None, type=int, help="processes (default: all cores)")
+def fp_coverage(out: str, workers: int | None) -> None:
+    """Prove which fault primitives each march test detects; validate against the publications."""
+    from .fpreport import compute, markdown
+
+    rows = compute(workers)
+    rows_time = compute(workers, immediate="time")
+    text = markdown(rows, rows_time)
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    Path(out).write_text(text, encoding="utf-8")
+    for name, ops, groups in rows:
+        click.echo(f"{name:22s} {ops:4d} " + " ".join(f"{d:>3d}/{n:<3d}" for d, n, _ in groups.values()))
+    click.echo(f"written {out}")
+
+
 if __name__ == "__main__":
     main()

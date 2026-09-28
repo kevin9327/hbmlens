@@ -15,7 +15,7 @@ from ..faults import FaultSet
 from ..geometry import HBMGeometry, get_geometry
 from ..patterns.base import Element, Hammer, Pattern, Pause, Read, background_values
 from ..records import FailLog, RunMeta, empty_records
-from .base import UnsupportedStep
+from .base import executable, UnsupportedStep
 
 CHUNK = 1 << 22  # words per vectorized chunk
 
@@ -67,6 +67,7 @@ class VirtualBackend:
     # ---- execution -------------------------------------------------------
     def run(self, pattern: Pattern, *, region: tuple[int, int] | None = None,
             max_records: int = 1 << 20, run_id: str | None = None) -> FailLog:
+        pattern = executable(pattern)
         start, stop = region or (0, self.geometry.total_words)
         rec_parts: list[np.ndarray] = []
         total = 0

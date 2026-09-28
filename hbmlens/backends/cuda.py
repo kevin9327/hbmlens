@@ -30,7 +30,7 @@ import numpy as np
 
 from ..patterns.base import Element, Hammer, Pattern, Pause, Read
 from ..records import FailLog, RunMeta, empty_records
-from .base import ReadOverlay, UnsupportedStep
+from .base import ReadOverlay, UnsupportedStep, executable
 
 KERNEL_SRC = r"""
 typedef unsigned int u32;
@@ -236,6 +236,7 @@ class CudaBackend:
 
     def run(self, pattern: Pattern, *, region: tuple[int, int] | None = None,
             max_records: int = 1 << 20, run_id: str | None = None) -> FailLog:
+        pattern = executable(pattern)
         cp = self.cp
         start, stop = region or (0, self.words)
         n = stop - start

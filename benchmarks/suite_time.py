@@ -56,6 +56,6 @@ for suite, names in SUITES.items():
         mem = Pattern(p.name, tuple(s for s in p.steps if not isinstance(s, Pause)), p.iterations)
         tf, tv = best_time(devs["fused"], mem), best_time(devs["vector"], mem)
         total += tv
-        gbs = lambda t: ops * words * 4 / t / 1e9  # noqa: E731
-        print(f"{name:16s} {ops:8d} | {tf:8.3f} {gbs(tf):11.0f} | {tv:9.3f} {gbs(tv):11.0f}")
+        gbs = ops * words * 4 / 1e9  # all reads and writes of the pattern, in GB
+        print(f"{name:16s} {ops:8d} | {tf:8.3f} {gbs / tf:11.0f} | {tv:9.3f} {gbs / tv:11.0f}")
     print(f"== {suite}: {ops_total} ops/word, memory passes {total:.2f} s (+{pause:g} s pauses)\n")

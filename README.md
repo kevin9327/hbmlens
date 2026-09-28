@@ -12,6 +12,14 @@ Status: early development (v0.1-dev). See [docs/roadmap.md](docs/roadmap.md).
 
 Measured, not claimed ([details](docs/vs-free-tools.md)):
 
+- **Test science you can check**: faults are fault primitives `<S/F/R>` from the memory
+  test literature (static, dynamic, and DRAM-specific partial / dirty / soft / transient
+  faults), and `hbmlens fp-coverage` proves exhaustively which ones a march test detects.
+  It reproduces the published results it is built on (all 64 values of the dynamic-fault
+  coverage table of VTS 2002, the first-detection table of DATE 2006, the completeness of
+  March SS, RAW1 and RAW) and found that hammered writes let plain write-destructive
+  faults escape March H1C and T1C, and March H2C with an odd hammer count, with fixes
+  proven complete ([fault-primitives.md](docs/fault-primitives.md)).
 - **Better tests**: across 17 fault models from the memory test literature, the
   hbmlens suite (March SS + intra-word + retention) detects 100% with 51 memory
   operations per word; a cuda_memtest-style suite uses 289 and averages 82.5%, with
@@ -29,7 +37,19 @@ pip install -e ".[cuda]"
 hbmlens demo                      # inject faults, test, analyze, write a 3D viewer
 hbmlens run --backend cuda --geometry medium --pattern march-ss   # test 4 GiB of GPU memory
 hbmlens coverage                  # which pattern catches which fault
+hbmlens fp-coverage               # prove march tests against fault primitives
 ```
+
+```python
+from hbmlens.fp import STATIC_SINGLE, STATIC_TWO
+from hbmlens.fpsim import evaluate
+from hbmlens.patterns.march import parse_march
+
+test = parse_march("{⇕(w0); ⇑(r0,w1); ⇑(r1,w0); ⇓(r0,w1); ⇓(r1,w0); ⇕(r0)}", "march-c-minus")
+missed = [r.fp.name for r in evaluate(test, STATIC_SINGLE + STATIC_TWO) if not r.detected]
+```
+
+Design and quality bar: [docs/design.md](docs/design.md).
 
 ```python
 from hbmlens.mapping import get_mapper

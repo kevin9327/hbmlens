@@ -28,7 +28,7 @@ Semantics every backend must follow:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, Union
 
 import numpy as np
@@ -106,20 +106,34 @@ def background_values(bg: Background, index: np.ndarray, invert: bool = False) -
 
 @dataclass(frozen=True)
 class Write:
+    """Write the background value. ``repeat`` > 1 is a hammer (the op applied that many
+    times in a row); ``on="bl"`` targets another cell on the same bit line instead of the
+    current one (the ``b`` operations of DRAM-specific march tests; needs a physical map)."""
+
     background: Background = ZERO
     invert: bool = False
+    repeat: int = 1
+    on: str = "self"
 
     def label(self) -> str:
-        return f"w{'~' if self.invert else ''}{self.background.label()}"
+        return f"w{'~' if self.invert else ''}{self.background.label()}{_suffix(self)}"
 
 
 @dataclass(frozen=True)
 class Read:
+    """Read and compare with the background value; ``repeat`` and ``on`` as for :class:`Write`."""
+
     background: Background = ZERO
     invert: bool = False
+    repeat: int = 1
+    on: str = "self"
 
     def label(self) -> str:
-        return f"r{'~' if self.invert else ''}{self.background.label()}"
+        return f"r{'~' if self.invert else ''}{self.background.label()}{_suffix(self)}"
+
+
+def _suffix(op) -> str:
+    return (f"^{op.repeat}" if op.repeat > 1 else "") + ("b" if op.on == "bl" else "")
 
 
 Op = Union[Write, Read]
@@ -176,10 +190,24 @@ class Pattern:
         return "{" + "; ".join(step.label() for step in self.steps) + "}"
 
     def reads_per_word(self) -> int:
-        return sum(sum(isinstance(op, Read) for op in s.ops) for s in self.steps if isinstance(s, Element))
+        return sum(sum(op.repeat for op in s.ops if isinstance(op, Read)) for s in self.steps
+                   if isinstance(s, Element))
 
     def ops_per_word(self) -> int:
-        return sum(len(s.ops) for s in self.steps if isinstance(s, Element))
+        return sum(sum(op.repeat for op in s.ops) for s in self.steps if isinstance(s, Element))
+
+    def unrolled(self) -> "Pattern":
+        """The same pattern with every hammered op written out ``repeat`` times."""
+        steps = []
+        for s in self.steps:
+            if isinstance(s, Element) and any(op.repeat > 1 for op in s.ops):
+                ops = tuple(replace(op, repeat=1) for op in s.ops for _ in range(op.repeat))
+                s = Element(s.order, ops)
+            steps.append(s)
+        return replace(self, steps=tuple(steps))
+
+    def uses_bitline_ops(self) -> bool:
+        return any(op.on != "self" for s in self.steps if isinstance(s, Element) for op in s.ops)
 
 
 def concat(name: str, patterns: list[Pattern]) -> Pattern:

@@ -69,3 +69,12 @@ class Backend(Protocol):
 
     def info(self) -> dict:
         """Device / configuration description for reports."""
+
+
+def executable(pattern: Pattern) -> Pattern:
+    """What a backend runs: hammered ops unrolled; ``b`` (bit line) ops rejected, since the
+    cell sharing a bit line is only known with a physical address map."""
+    if pattern.uses_bitline_ops():
+        raise UnsupportedStep(f"{pattern.name} operates on bit-line neighbours; that needs a physical "
+                              "address map (use hbmlens.fpsim to evaluate it)")
+    return pattern.unrolled()

@@ -54,7 +54,8 @@ def checkerboard() -> Pattern:
     b = Background("checker", 0x55555555)
     return Pattern(
         "checkerboard",
-        (Element("any", (_w(b),)), Element("any", (_r(b),)), Element("any", (_w(b, True),)), Element("any", (_r(b, True),))),
+        (Element("any", (_w(b),)), Element("any", (_r(b),)),
+         Element("any", (_w(b, True),)), Element("any", (_r(b, True),))),
         description="alternating 0101/1010 words and the inverse",
     )
 
@@ -79,7 +80,8 @@ def random_data(seed: int = 1) -> Pattern:
     b = Background("random", seed=seed)
     return Pattern(
         "random",
-        (Element("any", (_w(b),)), Element("any", (_r(b),)), Element("any", (_w(b, True),)), Element("any", (_r(b, True),))),
+        (Element("any", (_w(b),)), Element("any", (_r(b),)),
+         Element("any", (_w(b, True),)), Element("any", (_r(b, True),))),
         description="reproducible pseudo random data and its inverse",
     )
 
@@ -187,7 +189,8 @@ def mi_32bit() -> Pattern:
     steps: tuple = ()
     for k in range(32):
         steps += _moving_inversions(Background("solid", 1 << k))
-    return Pattern("mi-32bit", steps, description="cuda_memtest-style test 6: moving inversions, 32-bit walking pattern")
+    return Pattern("mi-32bit", steps,
+                   description="cuda_memtest-style test 6: moving inversions, 32-bit walking pattern")
 
 
 def bit_fade(pause_s: float = 5400.0) -> Pattern:
