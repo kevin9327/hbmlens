@@ -26,11 +26,12 @@ Working:
 ## P0: 3D visualization of the virtual device (required)
 
 The device under test does not exist physically, so seeing it is mandatory.
-Build a browser viewer (three.js / WebGL):
+A first three.js viewer exists (`hbmlens demo` writes `out/demo/viewer.html`: stacked
+core dies over a base die, bank tiles, failing words coloured by fault kind, die
+spacing slider). Still to build:
 
-- HBM cube as stacked dies over a base die; channels and pseudo channels as
-  columns through the stack; banks as tiles on each die
-- Fail cells and signatures (row, column, DQ lane, bank) highlighted in place
+- Zoom into one bank tile at full row/column resolution; hover shows coordinates and bits
+- Signature outlines (row, column, DQ lane, bank) from the analyzer, not only ground truth
 - Replay of a pattern run over time (which elements hit which banks)
 - Input: exported FailLog (Parquet/JSON) plus geometry and mapper description
 - Temperature and pattern comparisons side by side
