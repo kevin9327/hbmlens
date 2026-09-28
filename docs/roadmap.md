@@ -15,20 +15,27 @@ Working:
 - HBM organization presets (tiny, small, illustrative HBM3 16 GiB / HBM4 32 GiB)
   following the Channel > PseudoChannel > Sid > BankGroup > Bank > Row > Column hierarchy
 - Pluggable address mappers (linear, GPU-like interleave with bank XOR hashing)
-- Pattern spec + library: MATS+, March C-, walking ones, checkerboard,
-  moving inversions, random data, retention
+- Pattern spec + library: MATS+, March C-, word-oriented March C- (6 data backgrounds),
+  walking ones, checkerboard, moving inversions, random data, retention, and
+  cuda_memtest-style re-implementations for comparison
 - Fault model with ground truth: stuck cell, row, column, DQ lane, temperature-dependent retention
 - Virtual backend (NumPy) and CUDA backend (CuPy kernels) with exact fail counts
-  and full fail records (no fixed record cap)
-- Smoke results: CUDA and virtual backends report identical failing words for the
-  same injected faults; a 1 GiB March C- pass on a laptop GPU takes about 0.05 s
+  and full fail records up to a configurable capacity (default 1,048,576)
+- CUDA and virtual backends report identical failing words for the same injected
+  faults (all patterns, both access modes); coalesced 128-bit kernels run March C- at
+  726 GB/s and write+read at 828 GB/s on a laptop RTX 5080
+- Coverage measurement (`hbmlens coverage`, docs/coverage.md): nine classic fault models,
+  bit-exact; the hbmlens suite reaches 100% on all of them with 64 ops/word, a
+  cuda_memtest-style suite 99.8% on idempotent coupling with 289 ops/word
+  (docs/vs-free-tools.md)
 - Analyzer: failing (word, bit) cells classified into DQ lane, row, column, bank and
   isolated cell signatures; recovers every injected fault in 48 randomized placements
   (faults hidden inside a larger same-bit fault are reported as masked)
 - Fail bitmaps per signature (only that signature's bits, so a column inside a failing
   DQ lane stays visible), markdown report, signatures.json
-- CLI: `hbmlens demo`, `hbmlens run --backend virtual|cuda [--inject]`, `hbmlens analyze`
-- 35 tests, including CUDA/virtual parity on four patterns
+- CLI: `hbmlens demo`, `hbmlens run --backend virtual|cuda [--inject]`, `hbmlens analyze`,
+  `hbmlens coverage`
+- 51 tests, including CUDA/virtual parity and textbook coverage results
 
 ## P0: 3D visualization of the virtual device (required)
 
@@ -45,8 +52,10 @@ steps and a die spacing slider. Still to build:
 
 ## P1
 
-- Coverage matrix: which pattern catches which fault model
-- Unit tests for faults and both backends (CUDA tests marked `cuda`)
+- Linked faults and neighbourhood pattern-sensitive faults in the coverage simulator
+- Same comparison on real hardware: identical injected overlays under other free tools'
+  patterns, wall-clock per GiB
+- Coverage-driven suite search: shortest pattern set that reaches a target coverage
 
 ## P2
 
@@ -55,7 +64,6 @@ steps and a die spacing slider. Still to build:
 - LLM agent that drafts a failure analysis report from logs and fail maps
 - Coupling faults and read disturbance (Hammer) in the virtual device, calibrated
   with public HBM2 characterization data
-- Coalesced CUDA access pattern (current per-thread chunking leaves bandwidth unused)
 - Runs on rented HBM GPUs (GH200 / B200) with ECC and row-remap telemetry
 - Next-generation (HBM4 and beyond) test definitions from public specifications
 

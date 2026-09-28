@@ -6,7 +6,7 @@ also answer "how good is the test, what exactly failed, and why". Every number b
 was measured with the commands shown or read from the tools' public source; nothing
 is estimated.
 
-## 1. Same coverage with 4.5x less memory traffic
+## 1. Higher coverage with 4.5x fewer memory operations
 
 `hbmlens coverage --trials 2000` places nine classic fault models (stuck-at,
 transition, inversion / idempotent / state coupling between and inside words,
@@ -16,7 +16,7 @@ bit-exactly ([full table](coverage.md)).
 | suite | memory ops per word | faults detected |
 |---|---|---|
 | hbmlens full (word-oriented March C- + retention) | 64 | 100% in all nine models |
-| cuda_memtest-style (its 8 test descriptions, re-implemented) | 289 | 99.8% of idempotent coupling, 100% elsewhere |
+| cuda_memtest-style (8 of its tests, re-implemented from the public test list) | 289 | 99.8% of idempotent coupling, 100% elsewhere |
 
 The missed faults form one class (a rising aggressor at a lower address forcing the
 same bit of a higher word to 0, or the opposite polarity), which solid-data moving
@@ -25,8 +25,8 @@ inversions cannot expose. A regression test reproduces it.
 ## 2. Every failure is kept
 
 DCGM's memtest plugin counts all errors but keeps address and data for only the
-last 10 (`MAX_ERR_RECORD_COUNT 10`, a ring buffer in
-`nvvs/plugin_src/memtest/tests.cu`). hbmlens keeps the exact failure count and a
+last 10 (`RECORD_ERR` writes slot `count % MAX_ERR_RECORD_COUNT`, defined as 10,
+in `plugin_src/memtest/tests.cu` and `misc.h`). hbmlens keeps the exact failure count and a
 full record (address, expected, actual, element, op, iteration) for every failure
 up to a configurable capacity (default 1,048,576), and says when it overflowed.
 
@@ -47,8 +47,9 @@ The other tools' throughput was not measured on this machine.
 ## 4. Failures are read, not just counted
 
 - Failing bits are classified into DQ lane, row, column, bank and isolated cell
-  signatures; on injected faults the classifier recovers every fault across 48
-  randomized placements (reported with recall and precision).
+  signatures; on injected faults the classifier recovered every fault in 48
+  randomized populations (12 of them run in the test suite), reported with
+  recall and precision.
 - Fail bitmaps per signature, a markdown report, and a three.js 3D view of the
   device with click-to-zoom bank maps and a step-by-step replay.
 - The same fault set runs on the virtual device and on a real GPU (as a read
