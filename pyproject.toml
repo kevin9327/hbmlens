@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hbmlens"
+version = "0.1.0.dev0"
+description = "Fault injection, memory pattern testing (CUDA and virtual HBM) and fail-bitmap analysis for high-bandwidth memory"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+keywords = ["HBM", "DRAM", "memory test", "march test", "CUDA", "fault injection", "fail bitmap"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Hardware",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "matplotlib>=3.7",
+    "pyyaml>=6",
+    "click>=8",
+]
+
+[project.optional-dependencies]
+cuda = ["cupy-cuda13x>=14"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+hbmlens = "hbmlens.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hbmlens*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["cuda: needs a CUDA-capable GPU and CuPy (skipped otherwise)"]
