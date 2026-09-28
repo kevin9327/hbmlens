@@ -48,6 +48,9 @@ def _print_summary(log: FailLog, sigs: list, rec: Recovery | None, out_dir: Path
     t = f" in {log.meta.elapsed_s:.2f}s" if log.meta.elapsed_s else ""
     click.echo(f"{log.meta.total_fails:,} failing reads on {len(log.failing_indices()):,} words{t}")
     click.echo("signatures: " + (", ".join(f"{k} x{v}" for k, v in kinds.items()) or "none"))
+    if log.meta.overflow:
+        click.echo(f"warning: incomplete fail log ({log.meta.recorded:,} of {log.meta.total_fails:,} failing "
+                   "reads recorded); signatures describe the recorded part only, see the report")
     if rec is not None:
         click.echo(f"vs injected: recall {rec.recall:.0%}, precision {rec.precision:.0%}"
                    + (f", {len(rec.masked)} masked" if rec.masked else ""))
@@ -92,27 +95,38 @@ def demo(geometry: str, mapper_name: str, pattern: str, temperature: float, seed
               help="lay the demo fault population over the device (virtual faults, or a read overlay on GPU)")
 @click.option("--temperature", default=25.0, show_default=True, help="virtual backend only")
 @click.option("--seed", default=7, show_default=True)
+@click.option("--max-records", default=1 << 20, show_default=True,
+              help="detailed fail records to keep (the failure count is always exact)")
 @click.option("--out", default="out/run.parquet", show_default=True, type=click.Path(dir_okay=False))
 def run(backend: str, geometry: str, mapper_name: str, pattern: str, inject: bool, temperature: float,
-        seed: int, out: str) -> None:
+        seed: int, max_records: int, out: str) -> None:
     """Run one pattern and save the fail log (Parquet)."""
     g = get_geometry(geometry)
     faults = demo_faults(get_mapper(mapper_name, g), seed) if inject else FaultSet()
     pat = get_pattern(pattern)
     if backend == "virtual":
-        log = VirtualBackend(g, faults, temperature).run(pat)
+        log = VirtualBackend(g, faults, temperature).run(pat, max_records=max_records)
     else:
         from .backends.cuda import CudaBackend
 
-        dev = CudaBackend(g.total_words, g.name, overlay=faults.to_overlay())
+        try:
+            dev = CudaBackend(g.total_words, g.name, overlay=faults.to_overlay())
+        except MemoryError as e:
+            raise click.ClickException(f"{e}; choose a smaller --geometry") from None
         click.echo(f"GPU: {dev.info()['device']}, {g.total_bytes / 2**20:.1f} MiB under test")
-        log = dev.run(pat)
+        log = dev.run(pat, max_records=max_records)
+        if not log.meta.notes.get("dram_faithful"):
+            click.echo(f"note: {g.total_bytes / 2**20:.0f} MiB is under 4x the GPU's L2 cache "
+                       f"({dev.l2_bytes / 2**20:.0f} MiB); some accesses may be served from cache, not DRAM")
     log.meta.notes["mapper"] = mapper_name
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     log.save(out)
     bw = f", {log.meta.bandwidth_gbps:.0f} GB/s" if log.meta.bandwidth_gbps else ""
     click.echo(f"{pattern} on {backend}: {log.meta.total_fails:,} failing reads, "
                f"{log.meta.elapsed_s:.3f}s{bw} -> {out}")
+    if log.meta.overflow:
+        click.echo(f"warning: only {log.meta.recorded:,} failing reads were recorded in detail "
+                   "(raise --max-records or test a smaller region)")
 
 
 @main.command()
@@ -136,40 +150,63 @@ def analyze(log_path: str, geometry: str, mapper_name: str, out: str) -> None:
 @click.option("--out", default="docs/coverage.md", show_default=True, type=click.Path(dir_okay=False))
 def coverage(trials: int, seed: int, out: str) -> None:
     """Measure which pattern detects which classic fault model; compare test suites."""
-    from .coverage import FAULT_MODELS, markdown_table, measure
-    from .patterns.library import CUDA_MEMTEST_STYLE
+    from .coverage import FAULT_INFO, RETENTION_S, cheapest_suite, markdown_table, measure, suite_table
+    from .patterns.base import concat
+    from .patterns.library import CUDA_MEMTEST_STYLE, HBMLENS_SUITE
 
     pats = {name: PATTERNS[name]() for name in PATTERNS}
     res = measure(pats, trials=trials, seed=seed)
     suites = {
         "cuda_memtest-style (8 tests)": CUDA_MEMTEST_STYLE,
-        "hbmlens full: march-c-minus-wom + retention": ["march-c-minus-wom", "retention"],
-        "hbmlens quick: march-c-minus + retention": ["march-c-minus", "retention"],
+        "March C- + retention": ["march-c-minus", "retention"],
+        "word-oriented March C- + retention": ["march-c-minus-wom", "retention"],
+        "hbmlens: " + " + ".join(HBMLENS_SUITE): HBMLENS_SUITE,
     }
+    # same seed -> the same fault instances as the per-pattern measurement
+    res_suites = measure({s: concat(s, [pats[n] for n in names]) for s, names in suites.items()},
+                         trials=trials, seed=seed)
+    best = cheapest_suite(res)
+    ops, _ = res.suite_cost(best) if best else (0, 0.0)
+    models = "\n".join(f"- `{m}` {FAULT_INFO[m]}" for m in res.models)
     text = (
         "# Fault coverage of memory test patterns\n\n"
-        f"Measured with `hbmlens coverage --trials {trials} --seed {seed}`: every fault model is placed "
-        f"at {trials} random locations in a 1024-word memory and simulated bit-exactly. A fault counts as "
-        "detected only if every run order allowed by the pattern catches it. `ops/word` is the number of "
-        "memory reads and writes per word (the cost of the test).\n\n"
-        "Fault models: " + ", ".join(FAULT_MODELS) + " (see `hbmlens/coverage.py`). The cuda_memtest-style "
-        "patterns are re-implemented from that project's public test list; they are not its original code.\n\n"
-        + markdown_table(res, suites)
-        + "\n## Reading the table\n\n"
-        "- The hbmlens full suite detects every fault in every model with 64 operations per word; the "
-        "cuda_memtest-style suite needs 289 and still misses some idempotent coupling faults (CFid).\n"
-        "- The missed class: an aggressor cell at a lower address rises 0->1 and forces the same bit of a "
-        "higher word to 0 (or falls 1->0 and forces it to 1). With the same data in every word, moving "
-        "inversions never read the victim after it was flipped against its current value; March C-'s "
-        "down(r0,w1) element does. Reproduce: `tests/test_coverage.py::"
-        "test_moving_inversions_suite_misses_this_idempotent_coupling`.\n"
-        "- Plain March C- catches all bit-level faults but only half of the intra-word idempotent coupling "
-        "faults; running it over the six word-oriented data backgrounds closes that gap.\n"
-        "- Retention faults need a pause; the retention and bit-fade patterns are the only ones with one.\n"
+        f"Measured with `hbmlens coverage --trials {trials} --seed {seed}`. Each fault model is placed at "
+        f"{trials} random locations in a 1024-word memory of 32-bit words and every pattern is simulated "
+        "bit-exactly (`hbmlens/coverage.py`). A fault counts as detected only if detection is guaranteed: "
+        "for every initial value of the bits it involves (memory content before a test is unknown) and for "
+        "both address orders wherever the pattern allows either. A suite is simulated as one program, its "
+        "patterns back to back in the listed order, the way a test tool runs it.\n\n"
+        "Fault models (the static fault taxonomy of the memory test literature):\n\n" + models + "\n\n"
+        "The cuda_memtest-style patterns are re-implemented from that project's public test list; they are "
+        "not its original code.\n\n"
+        "## Suites\n\n" + suite_table(res_suites) + "\n"
+        + (f"Cheapest combination of library patterns that detects every simulated fault, each pattern on its "
+           f"own and in any order (exhaustive search, `hbmlens.coverage.cheapest_suite`): "
+           f"**{' + '.join(best)}**, {ops} memory operations per word.\n\n"
+           if best else "")
+        + "## Reading the table\n\n"
+        "- Deceptive read destructive faults (DRDF, CFdrd) return the right value and flip the cell, so only a "
+        "second read of the same cell sees them. March C- and moving inversions always write right after a "
+        "read, which hides the flip. March SS reads twice in a row.\n"
+        "- Write destructive faults (WDF, CFwd) need a write of the value a cell already holds. March C- never "
+        "does that on purpose; suites that change data between tests or backgrounds do it for some bits by "
+        "accident, which is why they land between 0% and 100%.\n"
+        "- March SS covers every single-cell and two-cell static fault in a bit-oriented memory. In a 32-bit "
+        "word, two bits that always hold the same value are never tested against each other; the 25N "
+        "intra-word test adds five data backgrounds for that.\n"
+        f"- Retention faults need a pause. The DRF model here leaks after {RETENTION_S:g} s, so a 64 s pause "
+        "and a 90 min pause both catch it; cells that leak between the two are only caught by the longer "
+        "pause (`retention(pause_s)` is configurable).\n"
+        "- Idempotent coupling and moving inversions: an aggressor at a lower address that rises and forces "
+        "the same bit of a higher word to 0 (or falls and forces 1) is missed with solid data "
+        "(`tests/test_coverage.py::test_moving_inversions_suite_misses_this_idempotent_coupling`).\n\n"
+        "## Every pattern\n\n" + markdown_table(res)
     )
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(text, encoding="utf-8")
-    click.echo(markdown_table(res, suites))
+    click.echo(suite_table(res_suites))
+    if best:
+        click.echo(f"cheapest complete suite: {' + '.join(best)} ({ops} ops/word)")
     click.echo(f"written {out}")
 
 

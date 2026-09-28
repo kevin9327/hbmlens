@@ -132,8 +132,9 @@ def test_cuda_matches_virtual():
 
     m = get_mapper("interleaved", "tiny")
     faults = demo_faults(m, 9)
-    for access in ("vector", "ordered"):
-        for name in ("march-c-minus", "walking-ones", "random", "moving-inversions", "checkerboard"):
+    for access in ("vector", "fused", "ordered"):
+        for name in ("march-c-minus", "walking-ones", "random", "moving-inversions", "checkerboard",
+                     "march-ss", "intra-word"):
             v = _run("tiny", m, faults, name)
             c = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay(),
                             access=access).run(get_pattern(name))
@@ -154,3 +155,40 @@ def test_cuda_regions_with_tail_or_misalignment(region):
     c = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay()).run(pat, region=region)
     assert np.array_equal(c.failing_indices(), v.failing_indices())
     assert c.meta.notes["access"] == ("vector" if region[0] % 4 == 0 else "ordered")
+
+
+def _records(log):
+    r = log.records
+    keys = np.lexsort((r["iteration"], r["op"], r["element"], r["index"]))
+    return {k: r[k][keys] for k in ("index", "element", "op", "iteration", "expected", "actual")}
+
+
+@pytest.mark.cuda
+@pytest.mark.skipif(not cuda_available(), reason="no CUDA device")
+@pytest.mark.parametrize("region", [(0, 32768), (4, 32768 - 3)])
+def test_cuda_op_major_chunks_match_virtual_record_for_record(region):
+    # tiny chunks force the op-major path through many chunks, both directions and a tail
+    from hbmlens.backends.cuda import CudaBackend
+
+    m = get_mapper("interleaved", "tiny")
+    faults = demo_faults(m, 4)
+    dev = CudaBackend(m.geometry.total_words, "tiny", overlay=faults.to_overlay(), dram_chunk_words=1000)
+    for name in ("march-ss", "intra-word", "walking-ones"):
+        pat = get_pattern(name)
+        v = VirtualBackend("tiny", faults).run(pat, region=region)
+        c = dev.run(pat, region=region)
+        rv, rc = _records(v), _records(c)
+        for k in rv:
+            assert np.array_equal(rv[k], rc[k]), (name, k)
+
+
+def test_overflowing_log_is_flagged_in_report_and_cli(tmp_path):
+    m = get_mapper("interleaved", "tiny")
+    log = VirtualBackend("tiny", demo_faults(m, 3)).run(get_pattern("march-c-minus"), max_records=100)
+    assert log.meta.overflow and log.meta.recorded == 100
+    out = tmp_path / "run.parquet"
+    log.save(out)
+    res = CliRunner().invoke(main, ["analyze", str(out), "--geometry", "tiny", "--out", str(tmp_path / "a")])
+    assert res.exit_code == 0, res.output
+    assert "incomplete fail log" in res.output
+    assert "Incomplete fail log" in (tmp_path / "a" / "report.md").read_text(encoding="utf-8")

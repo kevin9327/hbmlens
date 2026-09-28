@@ -318,6 +318,13 @@ def save_bitmaps(bitmaps: dict[int, np.ndarray], cells: pd.DataFrame, path, cols
     return path
 
 
+OVERFLOW_WARNING = (
+    "> **Incomplete fail log.** Only {recorded:,} of {total:,} failing reads were recorded. The "
+    "signatures below describe the recorded part only; a large fault (DQ lane, bank, channel) can show "
+    "up as many rows or cells. Test a smaller region or raise the record capacity (`--max-records`)."
+)
+
+
 def report_markdown(log: FailLog, mapper: LinearMapper, signatures: list[Signature],
                     recovery: Recovery | None = None, max_cells: int = 20) -> str:
     m = log.meta
@@ -328,8 +335,12 @@ def report_markdown(log: FailLog, mapper: LinearMapper, signatures: list[Signatu
         f"- address map (assumed): {mapper.describe()}",
         f"- temperature: {m.temperature_c} degC" if m.temperature_c is not None else "- temperature: n/a",
         f"- failing reads: {m.total_fails:,} (recorded {m.recorded:,}{', overflow' if m.overflow else ''})",
-        f"- failing words: {len(log.failing_indices()):,}",
+        f"- failing words: {len(log.failing_indices()):,}" + (" (in the recorded part)" if m.overflow else ""),
         "",
+    ]
+    if m.overflow:
+        lines += [OVERFLOW_WARNING.format(recorded=m.recorded, total=m.total_fails), ""]
+    lines += [
         "## Signatures",
         "",
         "| kind | location | bits | words | cells | first element |",

@@ -2,8 +2,9 @@
 import numpy as np
 import pytest
 
-from hbmlens.coverage import FAULT_MODELS, FaultSpec, detected, measure
-from hbmlens.patterns.library import CUDA_MEMTEST_STYLE, PATTERNS
+from hbmlens.coverage import FAULT_MODELS, FaultSpec, _Program, _run, cheapest_suite, detected, measure
+from hbmlens.patterns.base import ZERO, Element, Pattern, Read, Write
+from hbmlens.patterns.library import CUDA_MEMTEST_STYLE, HBMLENS_SUITE, PATTERNS
 
 
 @pytest.fixture(scope="module")
@@ -37,12 +38,68 @@ def test_only_patterns_with_pauses_detect_retention(res):
         assert rate(res, name, "DRF") == expected, name
 
 
-def test_hbmlens_suite_complete_at_a_quarter_of_the_cost(res):
-    full = res.suite_rate(["march-c-minus-wom", "retention"])
-    assert np.all(full == 1.0)
-    cost_full = res.ops_per_word["march-c-minus-wom"] + res.ops_per_word["retention"]
+@pytest.mark.parametrize("model", ["SAF", "TF", "WDF", "RDF", "DRDF", "IRF", "CFin", "CFid", "CFst",
+                                   "CFds", "CFwd", "CFdrd", "AF"])
+def test_march_ss_detects_every_static_bit_fault(res, model):
+    assert rate(res, "march-ss", model) == 1.0
+
+
+@pytest.mark.parametrize("model", ["WDF", "DRDF", "CFwd", "CFdrd"])
+def test_march_c_minus_misses_destructive_reads_and_writes(res, model):
+    assert rate(res, "march-c-minus", model) == 0.0
+
+
+def test_intra_word_test_covers_what_solid_backgrounds_cannot(res):
+    assert rate(res, "march-ss", "CFid-intra") < 1.0
+    assert res.suite_rate(["march-ss", "intra-word"])[res.models.index("CFid-intra")] == 1.0
+
+
+def test_hbmlens_suite_complete_at_under_a_fifth_of_the_cost(res):
+    assert np.all(res.suite_rate(HBMLENS_SUITE) == 1.0)
     cost_cm = sum(res.ops_per_word[n] for n in CUDA_MEMTEST_STYLE)
-    assert cost_full * 4 < cost_cm
+    assert res.suite_cost(HBMLENS_SUITE)[0] * 5 < cost_cm
+
+
+def test_cuda_memtest_style_never_sees_deceptive_reads(res):
+    for model in ("DRDF", "CFdrd"):
+        assert res.suite_rate(CUDA_MEMTEST_STYLE)[res.models.index(model)] == 0.0
+    assert res.suite_rate(CUDA_MEMTEST_STYLE)[res.models.index("WDF")] < 1.0
+
+
+def test_suites_run_back_to_back():
+    # run as one program, carried-over data may add detections, but never deceptive reads
+    from hbmlens.patterns.base import concat
+
+    pats = {n: PATTERNS[n]() for n in set(CUDA_MEMTEST_STYLE) | set(HBMLENS_SUITE)}
+    seq = measure({"cm": concat("cm", [pats[n] for n in CUDA_MEMTEST_STYLE]),
+                   "hb": concat("hb", [pats[n] for n in HBMLENS_SUITE])}, trials=100, seed=2)
+    cm, hb = seq.rate
+    for model in ("DRDF", "CFdrd"):
+        assert cm[seq.models.index(model)] == 0.0
+    assert np.all(hb == 1.0)
+
+
+def test_cheapest_suite_is_complete_and_no_dearer_than_hbmlens(res):
+    best = cheapest_suite(res)
+    assert best is not None and np.all(res.suite_rate(best) == 1.0)
+    assert res.suite_cost(best) <= res.suite_cost(HBMLENS_SUITE)
+
+
+def test_detection_must_hold_for_every_initial_state():
+    # a same-value write only destroys the cell if it already held that value
+    spec = FaultSpec("WDF", (7,), {"bit": 5, "state": 0})
+    lucky = Pattern("lucky", (Element("any", (Write(ZERO),)), Element("any", (Read(ZERO),))))
+    assert _run(_Program.of(lucky), spec, {}, "up")  # all-zero memory: caught
+    assert not _run(_Program.of(lucky), spec, {7: 1 << 5}, "up")  # bit was 1: plain transition
+    assert not detected(lucky, spec)
+
+
+def test_deceptive_read_needs_two_reads():
+    spec = FaultSpec("DRDF", (7,), {"bit": 5, "state": 0})
+    once = Pattern("once", (Element("any", (Write(ZERO),)), Element("any", (Read(ZERO), Write(ZERO)))))
+    twice = Pattern("twice", (Element("any", (Write(ZERO),)), Element("any", (Read(ZERO), Read(ZERO)))))
+    assert not detected(once, spec)
+    assert detected(twice, spec)
 
 
 def test_moving_inversions_suite_misses_this_idempotent_coupling():
@@ -56,7 +113,7 @@ def test_moving_inversions_suite_misses_this_idempotent_coupling():
 def test_coupling_direction_matters():
     # inversion coupling with aggressor above the victim, rising transition: a pure 'up'
     # march element that writes 0->1 reaches the aggressor after the victim was read
-    from hbmlens.patterns.base import ONES, ZERO, Element, Pattern, Read, Write
+    from hbmlens.patterns.base import ONES
 
     spec = FaultSpec("CFin", (10, 3), {"abit": 0, "vbit": 0, "rising": True})
     up_only = Pattern("up", (Element("up", (Write(ZERO),)), Element("up", (Read(ZERO), Write(ONES))),

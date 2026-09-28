@@ -100,6 +100,31 @@ def retention(pause_s: float = 64.0) -> Pattern:
     )
 
 
+def march_ss(bg: Background = ZERO) -> Pattern:
+    """March SS (22N), Hamdioui et al. 2002: every static simple fault of a bit-oriented memory.
+
+    {any(w0); up(r0,r0,w0,r0,w1); up(r1,r1,w1,r1,w0); down(r0,r0,w0,r0,w1); down(r1,r1,w1,r1,w0); any(r0)}
+
+    The back-to-back reads expose deceptive read destructive faults and the
+    same-value writes expose write destructive faults; March C- has neither.
+    """
+    def body(inv: bool) -> tuple:
+        return (_r(bg, inv), _r(bg, inv), _w(bg, inv), _r(bg, inv), _w(bg, not inv))
+
+    return Pattern(
+        "march-ss",
+        (
+            Element("any", (_w(bg),)),
+            Element("up", body(False)),
+            Element("up", body(True)),
+            Element("down", body(False)),
+            Element("down", body(True)),
+            Element("any", (_r(bg),)),
+        ),
+        description="March SS: 22N, all static simple faults incl. read/write destructive",
+    )
+
+
 WOM_BACKGROUNDS = (0x00000000, 0x55555555, 0x33333333, 0x0F0F0F0F, 0x00FF00FF, 0x0000FFFF)
 
 
@@ -112,6 +137,19 @@ def march_c_minus_wom() -> Pattern:
         steps += list(march_c_minus(Background("solid", v)).steps)
     return Pattern("march-c-minus-wom", tuple(steps),
                    description="March C- over 6 word-oriented data backgrounds (60N)")
+
+
+def intra_word() -> Pattern:
+    """Intra-word coupling test (25N): for each non-solid standard background,
+    any(w~bg, wbg, rbg, w~bg, r~bg). Both transitions happen on every word and are
+    read back, so each pair of bits that differs in the background is tested in both
+    directions; pairs with equal bits are covered by any solid-background march."""
+    steps = []
+    for v in WOM_BACKGROUNDS[1:]:
+        b = Background("solid", v)
+        steps.append(Element("any", (_w(b, True), _w(b), _r(b), _w(b, True), _r(b, True))))
+    return Pattern("intra-word", tuple(steps),
+                   description="intra-word coupling over 5 data backgrounds (25N)")
 
 
 # ---- re-implementations of the cuda_memtest test list (from its public README) ----
@@ -157,6 +195,8 @@ def bit_fade(pause_s: float = 5400.0) -> Pattern:
     return Pattern("bit-fade", p.steps, description="cuda_memtest-style test 9: bit fade (90 min pauses)")
 
 
+HBMLENS_SUITE = ["march-ss", "intra-word", "retention"]
+
 CUDA_MEMTEST_STYLE = ["walking-ones", "own-address", "mi-ones-zeros", "mi-8bit", "mi-random", "mi-32bit",
                       "random", "bit-fade"]
 
@@ -169,6 +209,8 @@ PATTERNS = {
     "random": random_data,
     "retention": retention,
     "march-c-minus-wom": march_c_minus_wom,
+    "march-ss": march_ss,
+    "intra-word": intra_word,
     "own-address": own_address,
     "mi-ones-zeros": mi_ones_zeros,
     "mi-8bit": mi_8bit,

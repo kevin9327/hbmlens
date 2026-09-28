@@ -107,3 +107,4 @@ def test_presets_capacity():
     assert PRESETS["hbm3-16g"].total_bytes == 16 * 2**30
     assert PRESETS["hbm4-32g"].total_bytes == 32 * 2**30
     assert PRESETS["tiny"].total_words == 32 * 1024
+    assert PRESETS["medium"].total_bytes == 4 * 2**30

@@ -180,3 +180,11 @@ class Pattern:
 
     def ops_per_word(self) -> int:
         return sum(len(s.ops) for s in self.steps if isinstance(s, Element))
+
+
+def concat(name: str, patterns: list[Pattern]) -> Pattern:
+    """Patterns run back to back in the given order (iterations unrolled), as a test tool runs a suite."""
+    steps: list = []
+    for p in patterns:
+        steps += list(p.steps) * p.iterations
+    return Pattern(name, tuple(steps), description=" + ".join(p.name for p in patterns))

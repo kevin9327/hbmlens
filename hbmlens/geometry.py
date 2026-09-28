@@ -122,6 +122,12 @@ PRESETS: dict[str, HBMGeometry] = {
         name="small", stacks=2, channels=4, pseudo_channels=2, sids=1,
         bank_groups=4, banks_per_group=2, rows=256, columns=32, words_per_column=8,
     ),
+    # GPU test sized device: the HBM3 organization below with 8192 rows per bank,
+    # 1 Gi words (4 GiB). Much larger than any GPU L2, so every access reaches DRAM.
+    "medium": HBMGeometry(
+        name="medium", stacks=1, channels=16, pseudo_channels=2, sids=1,
+        bank_groups=4, banks_per_group=4, rows=8192, columns=32, words_per_column=8,
+    ),
     # Illustrative HBM3 cube: 16 channels x 2 pseudo channels, 16 banks per pseudo
     # channel, 1 KiB page, 32 B access -> 16 GiB.
     "hbm3-16g": HBMGeometry(

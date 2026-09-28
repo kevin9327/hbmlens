@@ -12,18 +12,22 @@ Status: early development (v0.1-dev). See [docs/roadmap.md](docs/roadmap.md).
 
 Measured, not claimed ([details](docs/vs-free-tools.md)):
 
-- **Better tests**: the hbmlens suite detects 100% of nine classic fault models with
-  64 memory operations per word; a cuda_memtest-style suite needs 289 and still misses
-  a class of coupling faults ([coverage table](docs/coverage.md)).
+- **Better tests**: across 17 fault models from the memory test literature, the
+  hbmlens suite (March SS + intra-word + retention) detects 100% with 51 memory
+  operations per word; a cuda_memtest-style suite uses 289 and averages 82.5%, with
+  0% on deceptive read destructive faults ([coverage tables](docs/coverage.md)).
+- **Every access tests DRAM**: repeated accesses to a word inside one GPU pass are
+  served from cache; hbmlens runs those elements op-major so each op reaches DRAM.
 - **Every failure kept**: exact counts and full records, not the last 10.
-- **Fast**: 609-828 GB/s test throughput on a laptop RTX 5080.
+- **Fast**: a whole suite takes 0.30 s of memory passes per 4 GiB on a laptop
+  RTX 5080 (730-775 GB/s), plus two 64 s retention pauses.
 - **Failures are read**: DQ lane / row / column / bank / cell signatures, fail
   bitmaps and a 3D view of the device.
 
 ```bash
 pip install -e ".[cuda]"
 hbmlens demo                      # inject faults, test, analyze, write a 3D viewer
-hbmlens run --backend cuda        # test real GPU memory
+hbmlens run --backend cuda --geometry medium --pattern march-ss   # test 4 GiB of GPU memory
 hbmlens coverage                  # which pattern catches which fault
 ```
 

@@ -1,5 +1,7 @@
 """GPU memory-test throughput: hbmlens kernels vs a plain device copy on the same GPU.
 
+Each figure is the best of 5 runs after 1 s of warm-up.
+
 Run: python benchmarks/gpu_bandwidth.py [GiB]
 """
 import sys
@@ -21,13 +23,16 @@ words = int(gib * 2**30) // 4
 def copy_ceiling() -> float:
     a = cp.zeros(words, cp.uint32)
     b = cp.empty_like(a)
-    cp.copyto(b, a)
-    cp.cuda.Device().synchronize()
-    t = time.perf_counter()
-    for _ in range(5):
+    t_end = time.perf_counter() + 1.0
+    while time.perf_counter() < t_end:
         cp.copyto(b, a)
-    cp.cuda.Device().synchronize()
-    dt = (time.perf_counter() - t) / 5
+        cp.cuda.Device().synchronize()
+    dt = float("inf")
+    for _ in range(5):
+        t = time.perf_counter()
+        cp.copyto(b, a)
+        cp.cuda.Device().synchronize()
+        dt = min(dt, time.perf_counter() - t)
     del a, b
     cp.get_default_memory_pool().free_all_blocks()
     return 2 * words * 4 / dt / 1e9
@@ -41,8 +46,10 @@ patterns = [("write+read", write_read), ("march-c-minus", get_pattern("march-c-m
 for access in ("ordered", "vector"):
     dev = CudaBackend(words, "bench", access=access)
     for name, pat in patterns:
-        dev.run(pat)  # warm-up
-        log = dev.run(pat)
+        t_end = time.perf_counter() + 1.0  # let a laptop GPU leave its idle clocks
+        while time.perf_counter() < t_end:
+            dev.run(pat)
+        log = min((dev.run(pat) for _ in range(5)), key=lambda lg: lg.meta.elapsed_s)
         print(f"{access:8s} {name:18s} {log.meta.elapsed_s:7.3f}s {log.meta.bandwidth_gbps:6.0f} GB/s"
               f"  fails={log.meta.total_fails}")
     del dev
