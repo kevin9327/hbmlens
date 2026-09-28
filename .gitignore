@@ -9,3 +9,4 @@ out/
 runs/
 *.parquet
 !examples/**/*.parquet
+.claude/

@@ -121,6 +121,7 @@ class CudaBackend:
             raise MemoryError(f"{self.words * 4 / 2**30:.2f} GiB requested, {free / 2**30:.2f} GiB free")
         self.mem = cp.zeros(self.words, dtype=cp.uint32)
         self.kernel = cp.RawKernel(KERNEL_SRC, "run_element")
+        self.kernel.compile()  # compile now so the first run's timing is not skewed
         ov = overlay or ReadOverlay.empty()
         self._ov = (cp.asarray(ov.indices, dtype=cp.uint64), cp.asarray(ov.and_mask, dtype=cp.uint32),
                     cp.asarray(ov.or_mask, dtype=cp.uint32), len(ov.indices))
